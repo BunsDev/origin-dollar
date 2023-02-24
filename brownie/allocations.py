@@ -86,6 +86,32 @@ def reallocate(from_strat, to_strat, funds):
         coins.append(coin)
     return world.vault_admin.reallocate(from_strat, to_strat, coins, amounts, {"from": world.STRATEGIST})
 
+def from_strat(from_strat, funds):
+    """
+    Execute and return a transaction reallocating funds from one strat to another
+    """
+    if isinstance(from_strat, str) and from_strat[0:2] != "0x":
+        from_strat = NAME_TO_STRAT[from_strat]
+    amounts = []
+    coins = []
+    for [dollars, coin] in funds:
+        amounts.append(int(dollars * 10 ** coin.decimals()))
+        coins.append(coin)
+    return world.vault_admin.withdrawFromStrategy(from_strat, coins, amounts, {"from": world.STRATEGIST})
+
+def to_strat(to_strat, funds):
+    """
+    Execute and return a transaction depositing to a strat
+    """
+    if isinstance(to_strat, str) and to_strat[0:2] != "0x":
+        to_strat = NAME_TO_STRAT[to_strat]
+    amounts = []
+    coins = []
+    for [dollars, coin] in funds:
+        amounts.append(int(dollars * 10 ** coin.decimals()))
+        coins.append(coin)
+    return world.vault_admin.depositToStrategy(to_strat, coins, amounts, {"from": world.STRATEGIST})
+
 
 def allocation_exposure(allocation):
     """
@@ -150,6 +176,12 @@ class TemporaryForkWithVaultStats:
         after_allocaiton = with_target_allocations(load_from_blockchain(), self.before_votes)
         print(pretty_allocations(after_allocaiton))
         allocation_exposure(after_allocaiton)
+        
+        print('Vault Direct Holdings:')
+        print("  DAI", world.c18(world.dai.balanceOf(world.vault_core)))
+        print("  USDC", world.c6(world.usdc.balanceOf(world.vault_core)))
+        print("  USDT", world.c6(world.usdt.balanceOf(world.vault_core)))
+
         show_default_strategies()
         print("Vault change", world.c18(vault_change))
         print("Supply change", world.c18(supply_change))
@@ -190,14 +222,17 @@ def with_target_allocations(allocation, votes):
         print(df["target_allocation"].sum())
         raise Exception("Target allocations total too low")
 
-    df["target_dollars"] = (
-        df["current_dollars"].sum() * df["target_allocation"] / df["target_allocation"].sum()
-    ).astype(int)
+    if isinstance(votes, pd.DataFrame):
+        df["target_dollars"] = votes["target_dollars"]
+    else:
+        df["target_dollars"] = (
+            df["current_dollars"].sum() * df["target_allocation"] / df["target_allocation"].sum()
+        ).astype(int)
     df["delta_dollars"] = df["target_dollars"] - df["current_dollars"]
     return df
 
 
-def pretty_allocations(allocation, close_enough=50_000):
+def pretty_allocations(allocation, close_enough=255_000):
     df = allocation.copy()
     df["s"] = ""
     df.loc[df["delta_dollars"].abs() < close_enough, "s"] = "✔︎"
